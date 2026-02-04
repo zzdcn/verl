@@ -1,0 +1,50 @@
+# OCR Resize Tool Configuration
+# This configuration enables the ImageResizeTool for OCR optimization tasks.
+# The agent can resize images to improve OCR accuracy.
+# Scale values are consistent with SFT training data.
+
+tools:
+  - class_name: "verl.tools.image_resize_tool.ImageResizeTool"
+    config:
+      # tool type for registry
+      type: "native"
+      # Allowed scale factors for resizing (consistent with SFT training data)
+      # - Values > 1.0: zoom in (for small/blurry details)
+      # - Values < 1.0: zoom out (for unnecessarily large images)
+      allowed_scales: [0.125, 0.143, 0.167, 0.2, 0.25, 0.333, 0.5, 2, 3, 4, 5, 6, 7, 8]
+
+      # PIL resampling method (LANCZOS provides best quality)
+      interpolation: "LANCZOS"
+
+      # Reward for each successful resize call
+      # Set to 0.0 to not reward/penalize resize calls directly
+      # The main reward comes from OCR accuracy
+      step_reward: 0.0
+
+      # Penalty for invalid scale values or errors
+      invalid_scale_penalty: -0.05
+
+      # Maximum number of resize calls per instance
+      # Prevents infinite resize loops
+      max_resize_calls: 5
+
+    tool_schema:
+      type: "function"
+      function:
+        name: "resize"
+        description: |
+          Resize the current image by a scale factor to optimize OCR recognition.
+
+          Allowed scale values: 0.125, 0.143, 0.167, 0.2, 0.25, 0.333, 0.5, 2, 3, 4, 5, 6, 7, 8
+          - scale < 1: Decrease resolution. For example: scale=0.5 means half size, scale=0.125 means 1/8 size
+          - scale > 1: Increase resolution. For example: scale=2 means 2x larger, scale=8 means 8x larger
+
+          Different images may have different optimal resolutions for accurate recognition.
+          Analyze the image and decide whether adjusting the resolution would help improve recognition accuracy.
+        parameters:
+          type: "object"
+          properties:
+            scale:
+              type: "number"
+              description: "Scale factor for resizing. Allowed values: 0.125, 0.143, 0.167, 0.2, 0.25, 0.333, 0.5, 2, 3, 4, 5, 6, 7, 8"
+          required: ["scale"]

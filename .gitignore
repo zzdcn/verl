@@ -128,3 +128,7 @@ logs
 log
 outputs
 .history
+
+# local custom ignores
+*.whl
+temp_resource/
