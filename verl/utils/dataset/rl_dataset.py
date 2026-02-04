@@ -139,7 +139,6 @@ class RLHFDataset(Dataset):
         self.return_multi_modal_inputs = config.get("return_multi_modal_inputs", True)
         self.shuffle = config.get("shuffle", False)
         self.seed = config.get("seed")
-
         self._download()
         self._read_files_and_tokenize()
 
@@ -282,6 +281,21 @@ class RLHFDataset(Dataset):
     def __len__(self):
         return len(self.dataframe)
 
+    def _to_image_content(self, image):
+        if isinstance(image, Image.Image):
+            return {"type": "image", "image": image.convert("RGB")}
+
+        if isinstance(image, dict):
+            if "bytes" in image:
+                image_obj = Image.open(BytesIO(image["bytes"]))
+                return {"type": "image", "image": image_obj.convert("RGB")}
+            return {"type": "image", **image}
+
+        if isinstance(image, str):
+            return {"type": "image", "image": image}
+
+        raise TypeError(f"image must be dict, str, or PIL.Image, unsupported image type: {type(image)}")
+
     def _build_messages(self, example: dict):
         """Replace <image> and <video> placeholder in messages with corresponding image and video
         which is required by processor.apply_chat_template.
@@ -296,13 +310,15 @@ class RLHFDataset(Dataset):
         """
         messages: list = example[self.prompt_key]
         # When concatenating image and video datasets, pop will return None for image or video sample
-        images = example.pop(self.image_key, None) or []
-        videos = example.pop(self.video_key, None) or []
+        images = list(example.pop(self.image_key, None) or [])
+        videos = list(example.pop(self.video_key, None) or [])
 
         image_offset, video_offset = 0, 0
         for message in messages:
             if not images and not videos:
-                continue
+                content = message["content"]
+                if not isinstance(content, str) or ("<image>" not in content and "<video>" not in content):
+                    continue
             assert self.processor is not None, "processor is needed to process image and video"
 
             content = message["content"]
@@ -314,17 +330,12 @@ class RLHFDataset(Dataset):
             segments = [item for item in segments if item != ""]
             for segment in segments:
                 if segment == "<image>":
-                    assert image_offset < len(images), f"image_offset {image_offset} >= len(images) {len(images)}"
+                    if image_offset >= len(images):
+                        raise AssertionError(
+                            f"image_offset {image_offset} >= len(images) {len(images)}"
+                        )
                     image = images[image_offset]
-                    if isinstance(image, Image.Image):
-                        image = image.convert("RGB")
-                        content_list.append({"type": "image", "image": image})
-                    elif isinstance(image, dict):
-                        if "bytes" in image:
-                            image["image"] = Image.open(BytesIO(image["bytes"]))
-                        content_list.append({"type": "image", **image})
-                    else:
-                        raise TypeError(f"image must be dict or PIL.Image, unsupported image type: {type(image)}")
+                    content_list.append(self._to_image_content(image))
                     image_offset += 1
                 elif segment == "<video>":
                     assert video_offset < len(videos), f"video_offset {video_offset} >= len(videos) {len(videos)}"
@@ -392,8 +403,7 @@ class RLHFDataset(Dataset):
         """
         from qwen_vl_utils import process_vision_info
 
-        images, videos = process_vision_info(messages, image_patch_size=image_patch_size, return_video_metadata=True)
-        return images, videos
+        return process_vision_info(messages, image_patch_size=image_patch_size, return_video_metadata=True)
 
     def split(self, num_splits: int):
         """

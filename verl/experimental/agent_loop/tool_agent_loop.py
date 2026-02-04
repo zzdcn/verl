@@ -350,9 +350,12 @@ class ToolAgentLoop(AgentLoopBase):
                 None, lambda: self.tokenizer.encode(tool_response_text, add_special_tokens=False)
             )
         else:
+            # logger.info(f"len(new_images_this_turn): {len(new_images_this_turn)}")
+            # Pass None instead of empty list to avoid image_processor error
+            images_to_pass = new_images_this_turn if new_images_this_turn else None
             response_ids = await self.apply_chat_template(
                 add_messages,
-                images=new_images_this_turn,  # Using local variable
+                images=images_to_pass,
                 videos=None,
                 remove_system_prompt=True,
             )
